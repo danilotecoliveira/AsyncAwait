@@ -6,6 +6,7 @@ using ByteBank.Core.Service;
 using System.Threading.Tasks;
 using ByteBank.Core.Repository;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace ByteBank.View
 {
@@ -27,8 +28,10 @@ namespace ByteBank.View
             BtnProcessar.IsEnabled = false;
 
             var contas = r_Repositorio.GetContaClientes();
-            
-            AtualizarView(new List<string>(), TimeSpan.Zero);
+
+            PgsProgresso.Maximum = contas.Count();
+
+            LimparView();
 
             var inicio = DateTime.Now;
             var resultado = await ConsolidarContas(contas);
@@ -41,8 +44,17 @@ namespace ByteBank.View
 
         private async Task<string[]> ConsolidarContas(IEnumerable<ContaCliente> contas)
         {
-            var tasks = contas.Select(conta => 
-                Task.Factory.StartNew(() => r_Servico.ConsolidarMovimentacao(conta))
+            var taskUI = TaskScheduler.FromCurrentSynchronizationContext();
+
+            var tasks = contas.Select(conta =>
+                Task.Factory.StartNew(() =>
+                {
+                    var resultado = r_Servico.ConsolidarMovimentacao(conta);
+
+                    Task.Factory.StartNew(() => PgsProgresso.Value++, CancellationToken.None, TaskCreationOptions.None, taskUI);
+
+                    return resultado;
+                })
             );
 
             return await Task.WhenAll(tasks);
@@ -55,6 +67,13 @@ namespace ByteBank.View
 
             LstResultados.ItemsSource = result;
             TxtTempo.Text = mensagem;
+        }
+
+        private void LimparView()
+        {
+            LstResultados.ItemsSource = null;
+            TxtTempo.Text = null;
+            PgsProgresso.Value = 0;
         }
     }
 }
