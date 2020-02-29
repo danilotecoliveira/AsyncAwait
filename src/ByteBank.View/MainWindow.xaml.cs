@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using ByteBank.Core.Model;
 
 namespace ByteBank.View
 {
@@ -27,31 +28,40 @@ namespace ByteBank.View
             BtnProcessar.IsEnabled = false;
 
             var contas = r_Repositorio.GetContaClientes();
-            var resultado = new List<string>();
-
             AtualizarView(new List<string>(), TimeSpan.Zero);
 
             var inicio = DateTime.Now;
 
-            var contasTarefas = contas.Select(conta =>
-            {
-                return Task.Factory.StartNew(() =>
-                {
-                    var resultadoConta = r_Servico.ConsolidarMovimentacao(conta);
-                    resultado.Add(resultadoConta);
-                });
-            }).ToArray();
-
             var taskUI = TaskScheduler.FromCurrentSynchronizationContext();
 
-            Task.WhenAll(contasTarefas).ContinueWith(task => 
+            ConsolidarContas(contas).ContinueWith(task => 
             {
                 var fim = DateTime.Now;
+                var resultado = task.Result;
                 AtualizarView(resultado, fim - inicio);
             }, taskUI).ContinueWith(task => 
             {
                 BtnProcessar.IsEnabled = true;
             }, taskUI);
+        }
+
+        private Task<List<string>> ConsolidarContas(IEnumerable<ContaCliente> contas)
+        {
+            var resultado = new List<string>();
+
+            var tasks = contas.Select(conta => 
+            {
+                return Task.Factory.StartNew(() => 
+                {
+                    var contaResultado = r_Servico.ConsolidarMovimentacao(conta);
+                    resultado.Add(contaResultado);
+                });
+            });
+
+            return Task.WhenAll(tasks).ContinueWith(t => 
+            {
+                return resultado;
+            });
         }
 
         private void AtualizarView(List<String> result, TimeSpan elapsedTime)
